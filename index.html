@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SoccerOracle — AI Match Predictor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --grass: #0a3d1f;
+      --field: #0f5c2e;
+      --lime: #a8ff3e;
+      --lime-dim: #6bbf25;
+      --white: #f5f5f0;
+      --muted: #8a9a85;
+      --card: #0d2a15;
+      --border: #1a4a28;
+      --danger: #ff4e4e;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--grass);
+      color: var(--white);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Pitch lines background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 60px,
+          rgba(255,255,255,0.025) 60px,
+          rgba(255,255,255,0.025) 61px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 60px,
+          rgba(255,255,255,0.015) 60px,
+          rgba(255,255,255,0.015) 61px
+        );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Center circle */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      height: 500px;
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* HEADER */
+    header {
+      text-align: center;
+      margin-bottom: 52px;
+      animation: fadeDown 0.6s ease both;
+    }
+
+    .logo-tag {
+      display: inline-block;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--lime);
+      text-transform: uppercase;
+      background: rgba(168,255,62,0.1);
+      border: 1px solid rgba(168,255,62,0.25);
+      padding: 5px 14px;
+      border-radius: 2px;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(64px, 12vw, 108px);
+      letter-spacing: 2px;
+      line-height: 0.9;
+      color: var(--white);
+    }
+
+    h1 span {
+      color: var(--lime);
+      display: block;
+    }
+
+    .subtitle {
+      margin-top: 16px;
+      font-size: 15px;
+      color: var(--muted);
+      font-weight: 300;
+      letter-spacing: 0.3px;
+    }
+
+    /* FORM CARD */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 36px;
+      margin-bottom: 28px;
+      animation: fadeUp 0.7s ease both;
+      animation-delay: 0.15s;
+    }
+
+    .vs-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .vs-badge {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 28px;
+      color: var(--lime);
+      text-align: center;
+      letter-spacing: 1px;
+    }
+
+    .field-group label {
+      display: block;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .field-group input, .field-group select {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--white);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 16px;
+      font-weight: 500;
+      padding: 13px 16px;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .field-group input::placeholder { color: rgba(255,255,255,0.2); }
+
+    .field-group input:focus, .field-group select:focus {
+      border-color: var(--lime);
+      background: rgba(168,255,62,0.05);
+    }
+
+    .field-group select option { background: #0a3d1f; }
+
+    .extras-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .context-group {
+      margin-bottom: 28px;
+    }
+
+    .context-group label {
+      display: block;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .context-group textarea {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--white);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      padding: 13px 16px;
+      outline: none;
+      resize: vertical;
+      min-height: 80px;
+      transition: border-color 0.2s;
+    }
+
+    .context-group textarea::placeholder { color: rgba(255,255,255,0.2); }
+    .context-group textarea:focus { border-color: var(--lime); background: rgba(168,255,62,0.05); }
+
+    /* PREDICT BUTTON */
+    .predict-btn {
+      width: 100%;
+      background: var(--lime);
+      color: #0a3d1f;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 22px;
+      letter-spacing: 3px;
+      padding: 18px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .predict-btn:hover { background: #c2ff60; transform: translateY(-1px); }
+    .predict-btn:active { transform: translateY(0); }
+    .predict-btn:disabled { background: #3a5c2a; color: #6a8a5a; cursor: not-allowed; transform: none; }
+
+    .predict-btn .btn-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    /* LOADING */
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(10,61,31,0.3);
+      border-top-color: #0a3d1f;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    /* RESULT */
+    #result-section {
+      display: none;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .result-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .result-header {
+      background: linear-gradient(135deg, #0f5c2e, #0a3d1f);
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .result-header h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 20px;
+      letter-spacing: 3px;
+      color: var(--lime);
+    }
+
+    .verified-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--lime);
+      background: rgba(168,255,62,0.1);
+      border: 1px solid rgba(168,255,62,0.3);
+      padding: 5px 10px;
+      border-radius: 4px;
+    }
+
+    .verified-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--lime);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .result-body {
+      padding: 32px;
+    }
+
+    /* Score prediction */
+    .score-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      margin-bottom: 32px;
+      padding: 28px;
+      background: rgba(168,255,62,0.04);
+      border: 1px solid rgba(168,255,62,0.1);
+      border-radius: 10px;
+    }
+
+    .score-team {
+      text-align: center;
+      flex: 1;
+    }
+
+    .score-team-name {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .score-num {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 72px;
+      line-height: 1;
+      color: var(--white);
+    }
+
+    .score-sep {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 48px;
+      color: var(--lime);
+    }
+
+    /* Probability bar */
+    .prob-section {
+      margin-bottom: 28px;
+    }
+
+    .prob-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .prob-bar-track {
+      height: 10px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      gap: 2px;
+      margin-bottom: 8px;
+    }
+
+    .prob-home { background: var(--lime); border-radius: 6px 0 0 6px; transition: width 1s ease; }
+    .prob-draw { background: rgba(255,255,255,0.3); transition: width 1s ease; }
+    .prob-away { background: #ff8c42; border-radius: 0 6px 6px 0; transition: width 1s ease; }
+
+    .prob-legend {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .prob-legend span { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+    /* Analysis text */
+    .analysis-section {
+      margin-bottom: 24px;
+    }
+
+    .analysis-section h3 {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--lime);
+      margin-bottom: 14px;
+    }
+
+    .analysis-text {
+      font-size: 15px;
+      line-height: 1.7;
+      color: rgba(245,245,240,0.85);
+      font-weight: 300;
+    }
+
+    /* Key factors */
+    .factors-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .factor-chip {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: rgba(245,245,240,0.7);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .factor-chip::before {
+      content: '›';
+      color: var(--lime);
+      font-size: 16px;
+      line-height: 1.1;
+      flex-shrink: 0;
+    }
+
+    /* Proof section */
+    .proof-section {
+      background: rgba(168,255,62,0.04);
+      border: 1px solid rgba(168,255,62,0.12);
+      border-radius: 8px;
+      padding: 16px 20px;
+    }
+
+    .proof-section h3 {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--lime);
+      margin-bottom: 10px;
+    }
+
+    .proof-hash {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      word-break: break-all;
+      line-height: 1.6;
+    }
+
+    .proof-hash strong { color: var(--lime); }
+
+    /* New prediction button */
+    .new-btn {
+      width: 100%;
+      background: transparent;
+      color: var(--lime);
+      border: 1px solid rgba(168,255,62,0.4);
+      border-radius: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 14px;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .new-btn:hover {
+      background: rgba(168,255,62,0.08);
+      border-color: var(--lime);
+    }
+
+    /* Error */
+    .error-box {
+      display: none;
+      background: rgba(255,78,78,0.08);
+      border: 1px solid rgba(255,78,78,0.3);
+      border-radius: 8px;
+      padding: 16px 20px;
+      color: #ff8a8a;
+      font-size: 14px;
+      margin-top: 16px;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      margin-top: 60px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: rgba(138,154,133,0.4);
+      text-transform: uppercase;
+    }
+
+    /* ANIMATIONS */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    @media (max-width: 560px) {
+      .vs-row { grid-template-columns: 1fr; }
+      .vs-badge { display: none; }
+      .extras-row { grid-template-columns: 1fr; }
+      .factors-grid { grid-template-columns: 1fr; }
+      .score-num { font-size: 52px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo-tag">⚡ Powered by OpenGradient AI</div>
+    <h1>Soccer<span>Oracle</span></h1>
+    <p class="subtitle">AI match predictions — cryptographically verified on-chain</p>
+  </header>
+
+  <!-- FORM -->
+  <div class="card" id="form-section">
+    <div class="vs-row">
+      <div class="field-group">
+        <label>Home Team</label>
+        <input type="text" id="home-team" placeholder="e.g. Manchester City" />
+      </div>
+      <div class="vs-badge">VS</div>
+      <div class="field-group">
+        <label>Away Team</label>
+        <input type="text" id="away-team" placeholder="e.g. Arsenal" />
+      </div>
+    </div>
+
+    <div class="extras-row">
+      <div class="field-group">
+        <label>Competition</label>
+        <select id="competition">
+          <option value="Premier League">Premier League</option>
+          <option value="La Liga">La Liga</option>
+          <option value="Champions League">Champions League</option>
+          <option value="Bundesliga">Bundesliga</option>
+          <option value="Serie A">Serie A</option>
+          <option value="Ligue 1">Ligue 1</option>
+          <option value="World Cup">World Cup</option>
+          <option value="Euro">UEFA Euro</option>
+          <option value="MLS">MLS</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Match Stage</label>
+        <select id="stage">
+          <option value="Regular Season">Regular Season</option>
+          <option value="Knockout Round">Knockout Round</option>
+          <option value="Semi-Final">Semi-Final</option>
+          <option value="Final">Final</option>
+          <option value="Derby">Derby / Rivalry</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="context-group">
+      <label>Extra Context (optional)</label>
+      <textarea id="context" placeholder="e.g. Home team missing key striker, away team on 5-game winning streak, rainy conditions expected..."></textarea>
+    </div>
+
+    <button class="predict-btn" id="predict-btn" onclick="predict()">
+      <div class="btn-inner">
+        <span>🔮 Generate Prediction</span>
+      </div>
+    </button>
+
+    <div class="error-box" id="error-box"></div>
+  </div>
+
+  <!-- RESULT -->
+  <div id="result-section">
+    <div class="result-card">
+      <div class="result-header">
+        <h2>⚽ Prediction Result</h2>
+        <div class="verified-badge">
+          <span class="verified-dot"></span>
+          AI VERIFIED
+        </div>
+      </div>
+      <div class="result-body">
+
+        <!-- Score -->
+        <div class="score-display">
+          <div class="score-team">
+            <div class="score-team-name" id="res-home-name">—</div>
+            <div class="score-num" id="res-home-score">0</div>
+          </div>
+          <div class="score-sep">:</div>
+          <div class="score-team">
+            <div class="score-team-name" id="res-away-name">—</div>
+            <div class="score-num" id="res-away-score">0</div>
+          </div>
+        </div>
+
+        <!-- Probabilities -->
+        <div class="prob-section">
+          <div class="prob-label">Win Probabilities</div>
+          <div class="prob-bar-track">
+            <div class="prob-home" id="bar-home" style="width:33%"></div>
+            <div class="prob-draw" id="bar-draw" style="width:33%"></div>
+            <div class="prob-away" id="bar-away" style="width:33%"></div>
+          </div>
+          <div class="prob-legend">
+            <span><span class="dot" style="background:var(--lime)"></span> <span id="leg-home">Home 33%</span></span>
+            <span><span class="dot" style="background:rgba(255,255,255,0.3)"></span> <span id="leg-draw">Draw 33%</span></span>
+            <span><span class="dot" style="background:#ff8c42"></span> <span id="leg-away">Away 33%</span></span>
+          </div>
+        </div>
+
+        <!-- Analysis -->
+        <div class="analysis-section">
+          <h3>📋 Match Analysis</h3>
+          <div class="analysis-text" id="res-analysis">Loading...</div>
+        </div>
+
+        <!-- Key Factors -->
+        <div class="analysis-section">
+          <h3>🔑 Key Factors</h3>
+          <div class="factors-grid" id="res-factors"></div>
+        </div>
+
+        <!-- On-chain proof -->
+        <div class="proof-section">
+          <h3>🔗 On-Chain Proof</h3>
+          <div class="proof-hash" id="res-proof">Generating proof...</div>
+        </div>
+
+        <button class="new-btn" onclick="resetForm()">← New Prediction</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>SoccerOracle · Built on OpenGradient · Base Sepolia Testnet</footer>
+</div>
+
+<script>
+  async function predict() {
+    const home = document.getElementById('home-team').value.trim();
+    const away = document.getElementById('away-team').value.trim();
+    const competition = document.getElementById('competition').value;
+    const stage = document.getElementById('stage').value;
+    const context = document.getElementById('context').value.trim();
+
+    if (!home || !away) {
+      showError('Please enter both team names.');
+      return;
+    }
+
+    const btn = document.getElementById('predict-btn');
+    const errorBox = document.getElementById('error-box');
+    errorBox.style.display = 'none';
+
+    btn.disabled = true;
+    btn.querySelector('.btn-inner').innerHTML = `<div class="spinner"></div><span>Consulting the Oracle...</span>`;
+
+    try {
+      const response = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ home, away, competition, stage, context })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Prediction failed');
+      }
+
+      const data = await response.json();
+      renderResult(data, home, away);
+
+    } catch (err) {
+      showError(err.message || 'Something went wrong. Please try again.');
+      btn.disabled = false;
+      btn.querySelector('.btn-inner').innerHTML = `<span>🔮 Generate Prediction</span>`;
+    }
+  }
+
+  function renderResult(data, home, away) {
+    document.getElementById('res-home-name').textContent = home;
+    document.getElementById('res-away-name').textContent = away;
+    document.getElementById('res-home-score').textContent = data.homeScore ?? '?';
+    document.getElementById('res-away-score').textContent = data.awayScore ?? '?';
+
+    const ph = data.homeWinPct || 33;
+    const pd = data.drawPct || 33;
+    const pa = data.awayWinPct || 34;
+
+    document.getElementById('bar-home').style.width = ph + '%';
+    document.getElementById('bar-draw').style.width = pd + '%';
+    document.getElementById('bar-away').style.width = pa + '%';
+    document.getElementById('leg-home').textContent = `${home} ${ph}%`;
+    document.getElementById('leg-draw').textContent = `Draw ${pd}%`;
+    document.getElementById('leg-away').textContent = `${away} ${pa}%`;
+
+    document.getElementById('res-analysis').textContent = data.analysis || 'No analysis available.';
+
+    const factorsEl = document.getElementById('res-factors');
+    factorsEl.innerHTML = '';
+    (data.factors || []).forEach(f => {
+      const chip = document.createElement('div');
+      chip.className = 'factor-chip';
+      chip.textContent = f;
+      factorsEl.appendChild(chip);
+    });
+
+    const proofEl = document.getElementById('res-proof');
+    if (data.paymentHash) {
+      proofEl.innerHTML = `<strong>Payment Hash:</strong> ${data.paymentHash}<br/><strong>Model:</strong> ${data.model || 'openai/gpt-4.1'}<br/><strong>Network:</strong> Base Sepolia Testnet`;
+    } else {
+      proofEl.innerHTML = `<strong>Prediction ID:</strong> ${data.predictionId || generateId()}<br/><strong>Model:</strong> ${data.model || 'openai/gpt-4.1'}<br/><strong>Note:</strong> On-chain settlement active when wallet is connected`;
+    }
+
+    document.getElementById('form-section').style.display = 'none';
+    const resultSection = document.getElementById('result-section');
+    resultSection.style.display = 'block';
+  }
+
+  function resetForm() {
+    document.getElementById('form-section').style.display = 'block';
+    document.getElementById('result-section').style.display = 'none';
+    const btn = document.getElementById('predict-btn');
+    btn.disabled = false;
+    btn.querySelector('.btn-inner').innerHTML = `<span>🔮 Generate Prediction</span>`;
+  }
+
+  function showError(msg) {
+    const box = document.getElementById('error-box');
+    box.textContent = '⚠ ' + msg;
+    box.style.display = 'block';
+  }
+
+  function generateId() {
+    return 'OG-' + Math.random().toString(36).substring(2,10).toUpperCase();
+  }
+</script>
+</body>
+</html>
