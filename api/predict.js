@@ -13,9 +13,8 @@ const handler = async (req, res) => {
   }
 
   const OG_PRIVATE_KEY = process.env.OG_PRIVATE_KEY;
-  const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
-  const prompt = `You are a football analyst. Predict this match and respond ONLY with valid JSON, no markdown, no extra text.
+  const prompt = `You are a world-class football analyst. Predict this match and respond ONLY with valid JSON, no markdown, no extra text.
 
 Match: ${home} vs ${away}
 Competition: ${competition || 'Unknown'}
@@ -24,64 +23,67 @@ ${context ? `Context: ${context}` : ''}
 
 Return this exact JSON structure:
 {
-  "homeScore": 2,
-  "awayScore": 1,
-  "homeWinPct": 55,
-  "drawPct": 25,
-  "awayWinPct": 20,
-  "analysis": "2-3 sentence tactical analysis here",
+  "homeScore": <integer 0-5>,
+  "awayScore": <integer 0-5>,
+  "homeWinPct": <integer>,
+  "drawPct": <integer>,
+  "awayWinPct": <integer>,
+  "analysis": "<2-3 sentence tactical analysis>",
   "factors": ["factor 1", "factor 2", "factor 3", "factor 4"]
-}`;
+}
+
+Note: homeWinPct + drawPct + awayWinPct must equal exactly 100.`;
 
   try {
+    if (!OG_PRIVATE_KEY) {
+      return res.status(500).json({ error: 'OG_PRIVATE_KEY is not set in environment variables.' });
+    }
+
+    const ogRes = await fetch('https://gateway.opengradient.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Private-Key': OG_PRIVATE_KEY,
+        'X-Settlement-Mode': 'SETTLE_BATCH',
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-4.1',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 600,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!ogRes.ok) {
+      const errText = await ogRes.text();
+      console.error('OpenGradient error:', errText);
+      return res.status(500).json({ error: `OpenGradient API error: ${errText}` });
+    }
+
+    const ogData = await ogRes.json();
+    const raw = ogData.choices?.[0]?.message?.content || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+
     let prediction;
-    let modelUsed = 'demo';
-
-    if (OPENAI_KEY) {
-      const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 500,
-          temperature: 0.7,
-        }),
-      });
-      const oaiData = await oaiRes.json();
-      const raw = oaiData.choices?.[0]?.message?.content || '';
-      const clean = raw.replace(/```json|```/g, '').trim();
+    try {
       prediction = JSON.parse(clean);
-      modelUsed = 'openai/gpt-4o-mini';
-
-    } else {
-      // Demo fallback
-      prediction = {
-        homeScore: 2,
-        awayScore: 1,
-        homeWinPct: 52,
-        drawPct: 24,
-        awayWinPct: 24,
-        analysis: `${home} holds a strong home advantage and their pressing style should trouble ${away}'s build-up play. Expect an intense match with the home side edging it.`,
-        factors: [
-          'Home crowd advantage',
-          'Recent form favors home side',
-          'Away team travel fatigue',
-          'Head-to-head history'
-        ]
-      };
+      const total = (prediction.homeWinPct || 0) + (prediction.drawPct || 0) + (prediction.awayWinPct || 0);
+      if (total !== 100) {
+        prediction.awayWinPct = 100 - (prediction.homeWinPct || 0) - (prediction.drawPct || 0);
+      }
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse AI response. Please try again.' });
     }
 
     return res.status(200).json({
       ...prediction,
-      model: modelUsed,
+      model: ogData.model || 'openai/gpt-4.1',
+      paymentHash: ogData.payment_hash || ogData.x402_hash || null,
       predictionId: 'OG-' + Date.now().toString(36).toUpperCase(),
     });
 
   } catch (err) {
+    console.error('Handler error:', err);
     return res.status(500).json({ error: err.message || 'Prediction failed.' });
   }
 };
